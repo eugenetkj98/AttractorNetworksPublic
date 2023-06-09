@@ -17,7 +17,7 @@ Running the Code
 ================
 1. Ensure all relevant Python dependencies are installed. Please check all imported packages in the scripts for a list of dependencies.
 2. AttractorNetworks.py, ChaoticSystems.py, NetworkReconstructions.py, SurrogatesGenerator.py, all contain helper functions used to construct and attractor network and calculate surprise.
-3. A demo of the algorithm for analysing change points in the Chua chaotic oscillator is provided in AttractorNetworks.py
+3. A demo of the algorithm for analysing change points in the Chua chaotic oscillator is provided in AttractorNetworks.py (runtime is approximately 5 minutes, depending on machine)
 
 Note: Each file is setup as in the form of a notebook with cells demarcated with "# %%". User are advised to run AttractorNetworks.py cell by cell in Visual Studio Code.
 
