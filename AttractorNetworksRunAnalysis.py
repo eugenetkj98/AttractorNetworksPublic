@@ -115,12 +115,12 @@ while (np.shape(raw_states)[0] > n_flow_data):
         print(f"Trimming Progress: {np.round(((original_len-np.shape(raw_states)[0])/n_attractor_data)*100, decimals = 2)}%")
 
 # %% Alternative EPSILON_FLOW CALCULATION based on distribution of points
-# inter_dist = sp.spatial.distance_matrix(states[:, 0,:],states[:,0,:])
-# smallest_dist = np.zeros(np.shape(inter_dist)[0])
-# for i in range(len(smallest_dist)):
-#     smallest_dist[i] = np.min(np.concatenate((inter_dist[i,:i],inter_dist[i,i+1:])))
-# EPSILON_FLOW = np.quantile(smallest_dist, 0.99)
-# print(EPSILON_FLOW)
+inter_dist = sp.spatial.distance_matrix(states[:, 0,:],states[:,0,:])
+smallest_dist = np.zeros(np.shape(inter_dist)[0])
+for i in range(len(smallest_dist)):
+    smallest_dist[i] = np.min(np.concatenate((inter_dist[i,:i],inter_dist[i,i+1:])))
+EPSILON_FLOW = np.quantile(smallest_dist, 0.99)
+print(EPSILON_FLOW)
 
 # %%
 """
@@ -317,32 +317,38 @@ test_series = np.empty((np.shape(test_embed)[0]-1, 2, np.shape(test_embed)[1]))
 test_series[:,0,:] = test_embed[:-1,:]
 test_series[:,1,:] = test_embed[1:,:]
 
-# %% Tipping Point Detection Test Data (Single Channel)
-"""Generate timeseries that toggles between PC and NPC Rossler"""
+# Time values for plotting later
+S_time = np.array(range(0,np.shape(test_series)[0]))
 
-switch_T = 4000
-n_switch = 7
+# # %% Tipping Point Detection Test Data (Single Channel)
+# """Generate timeseries that toggles between PC and NPC Rossler"""
 
-func2 = CS.rossler_NPC # Need to ensuree that func is previously set to be CS.rossler_PC
+# switch_T = 4000
+# n_switch = 7
 
-for i in tqdm(range(n_switch)):
-    if i%2 == 0: # Generate data for normal system
-        if i == 0:
-            generated_states = CS.integrate(func, dt=dt, T=wash+switch_T, RK = True, supersample = 1, dims = dims)[wash:,:]
-        else:
-            # Generate an initial state that links to the surrogate data
-            appended_states = CS.integrate(func, dt=dt, T=switch_T+1, RK = True, supersample = 1, dims = dims, init = generated_states[-1,:])[1:,:]
-            generated_states = np.append(generated_states, appended_states, axis = 0)
-    else: # Generate surrogate data
-        appended_states = CS.integrate(func2, dt=dt, T=switch_T+1, RK = True, supersample = 1, dims = dims, init = generated_states[-1,:])[1:,:]
-        generated_states = np.append(generated_states, appended_states, axis = 0)
+# func2 = CS.rossler_NPC # Need to ensuree that func is previously set to be CS.rossler_PC
 
-generated_states = (generated_states[:,0] - mu)/sigma # Normalise data
-test_embed = CS.nonunif_embed2(generated_states, lags)[::SUBSAMPLE,:]
+# for i in tqdm(range(n_switch)):
+#     if i%2 == 0: # Generate data for normal system
+#         if i == 0:
+#             generated_states = CS.integrate(func, dt=dt, T=wash+switch_T, RK = True, supersample = 1, dims = dims)[wash:,:]
+#         else:
+#             # Generate an initial state that links to the surrogate data
+#             appended_states = CS.integrate(func, dt=dt, T=switch_T+1, RK = True, supersample = 1, dims = dims, init = generated_states[-1,:])[1:,:]
+#             generated_states = np.append(generated_states, appended_states, axis = 0)
+#     else: # Generate surrogate data
+#         appended_states = CS.integrate(func2, dt=dt, T=switch_T+1, RK = True, supersample = 1, dims = dims, init = generated_states[-1,:])[1:,:]
+#         generated_states = np.append(generated_states, appended_states, axis = 0)
 
-test_series = np.empty((np.shape(test_embed)[0]-1, 2, np.shape(test_embed)[1]))
-test_series[:,0,:] = test_embed[:-1,:]
-test_series[:,1,:] = test_embed[1:,:]
+# generated_states = (generated_states[:,0] - mu)/sigma # Normalise data
+# test_embed = CS.nonunif_embed2(generated_states, lags)[::SUBSAMPLE,:]
+
+# test_series = np.empty((np.shape(test_embed)[0]-1, 2, np.shape(test_embed)[1]))
+# test_series[:,0,:] = test_embed[:-1,:]
+# test_series[:,1,:] = test_embed[1:,:]
+
+# # Time values for plotting later
+# S_time = np.array(range(0,np.shape(test_series)[0]))
 
 # %% Calculate surprise to detect tipping point in data
 """
