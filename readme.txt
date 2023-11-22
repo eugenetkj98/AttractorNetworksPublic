@@ -6,6 +6,7 @@ Author: Eugene Tan
 Version History
 ===============
 v1.0 - 9/6/2023 (Initial Upload of code)
+v1.1 - 22/11/2023 (Added new code for public use)
 
 ========
 Overview
@@ -21,6 +22,8 @@ Running the Code
 
 Note: Each file is setup as in the form of a notebook with cells demarcated with "# %%". User are advised to run AttractorNetworks.py cell by cell in Visual Studio Code.
 
+N.B. There is also a version of the code that you can use to run the analysis on your own dataset for change point detection.
+
 ======================
 Overview of Code Files
 ======================
@@ -32,3 +35,5 @@ ChaoticSystems.py - RK4 integrator implementation for integrating various dynami
 NetworkReconstruction.py - Code for calculating the dynamics component of the attractor network, and calculating surprise
 
 SurrogatesGenerator.py - Implementation of the iterated Amplitude Adjusted Fourier Surrogates used in constructing artificial chaotic time series with abnormal behaviour (see paper)
+
+AttractorNetworks_PublicUse.py - Version of the code that you can use to input your own dataset to run change point detection on.
