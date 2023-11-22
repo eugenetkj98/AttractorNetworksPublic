@@ -399,7 +399,7 @@ MA_cutoff = [np.quantile(null_moving_average, alpha/2),np.quantile(null_moving_a
 MSTD_cutoff = [np.quantile(null_moving_std, alpha/2),np.quantile(null_moving_std, 1-alpha/2)]
 MPE_cutoff = [np.quantile(null_moving_PE, alpha/2),np.quantile(null_moving_PE, 1-alpha/2)]
 
-# %% Helper Functino for converting calculate metric/statistic into a normalised binary statistic
+# %% Helper Function for converting calculate metric/statistic into a normalised binary statistic
 """
 This function converts a calculated, unscaled moving statistic into a 
 new measure with exponential smoothing ranging from 0 to 1 (i.e. calculates E(t))
