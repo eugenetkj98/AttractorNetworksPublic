@@ -7,6 +7,11 @@ Version History
 ===============
 v1.0 - 9/6/2023 (Initial Upload of code)
 v1.1 - 22/11/2023 (Added new code for public use)
+v1.2
+- Cleaned up comments and removed redundant code from AttractorNetworks_PublicUse.py
+- Reimplemented comparisons against naive moving statistics
+- Made usage of code with imported data clearer.
+- Allowed additional parameters (cutoff ratio, bandwidth, significance level) to be more easily tunable
 
 ========
 Overview
