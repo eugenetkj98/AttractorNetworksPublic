@@ -1,7 +1,7 @@
 """
 Author: Eugene Tan (UWA Complex Systems Group)
-Date: 22/11/2023
-This code is an adapted versiojn of AttractorNetworksRunAnalysis.py
+Last Updated: 28/5/2024
+This code is an adapted version of AttractorNetworksRunAnalysis.py
 that is modified for public use. Just fit in your own dataset and it will generate
 the analysis outputs for change point detection as a final plot
 
@@ -45,6 +45,9 @@ SAMPLE_SIZE = int(3000/SUBSAMPLE)
 MAX_DATA_LEN = 3800000
 NETWORK_SIZE_LIMIT = 10000 # Approximate number of nodes to include in attractor skeleton before stopping.
 SUPERSAMPLE = 1
+bandwidth = 50 #width of sliding window when calculating moving statistics
+cutoff_ratio = 2 # Multiplier w.r.t quantile of exponential smoothed curve to define onset of change point
+quantile_alpha = 0.05 # Significance level for hypothesis testing portion to detect change points
 
 # %%
 """
@@ -54,20 +57,29 @@ SUPERSAMPLE = 1
     (may be omitted, but then need to find a way to do change point detection based on just the surprise metric S(t))
 - Test data: test data to run change point detection algorithm
 """
-# Generate toy model data, normalise and extract time series component for embedding later (To be replaced by data import)
-wash = 5000
-T = 30000
-dt = 0.02
-func = CS.rossler_PC
-dims = 3
-raw_data = CS.integrate(func, dt=dt, T=wash+T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = [0.5*np.random.rand(),0,0])[wash:,0]
+
+
+# Import data to be analysed
+raw_data = raw_data
+raw_data = np.reshape(raw_data, len(raw_data))
 training_data = raw_data[:15000]
 validation_data = raw_data[15000:]
+test_data = raw_data[:]
 
-test_func = CS.rossler_NPC
-test_data_part_1 = CS.integrate(func, dt=dt, T=wash+T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = [0.5*np.random.rand(),0,0])[wash:,:]
-test_data_part_2 = CS.integrate(test_func, dt=dt, T=T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = test_data_part_1[-1,:])[1:,:]
-test_data = np.concatenate((test_data_part_1, test_data_part_2))[:,0]
+# NOTE: This code block is an alternative example that does the same calculation using toy data. 
+# wash = 5000
+# T = 30000
+# dt = 0.02
+# func = CS.rossler_PC
+# dims = 3
+# raw_data = CS.integrate(func, dt=dt, T=wash+T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = [0.5*np.random.rand(),0,0])[wash:,0]
+# training_data = raw_data[:15000]
+# validation_data = raw_data[15000:]
+
+# test_func = CS.rossler_NPC
+# test_data_part_1 = CS.integrate(func, dt=dt, T=wash+T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = [0.5*np.random.rand(),0,0])[wash:,:]
+# test_data_part_2 = CS.integrate(test_func, dt=dt, T=T, RK = True, supersample = SUPERSAMPLE, dims = dims, init = test_data_part_1[-1,:])[1:,:]
+# test_data = np.concatenate((test_data_part_1, test_data_part_2))[:,0]
 
 # Select lags required for delay embedding (e.g. SToPS, PECUZAL or Mutual Information Delays)
 lags = [13,38] # Selected lags used to contruct time delay vector embedding
@@ -205,32 +217,27 @@ S_null = []
 for i in tqdm(range(0,np.shape(test_series_null)[0])):
     output = NR.calculate_surprise(test_series_null[i,:,:], trimmed_states, P_flow, EPSILON_FLOW,N, ETA_CRITICAL = ETA_CRITICAL)
     S_null.append(output[0])
+# %% 
+"""
+(*) Below code same as above but also calculates null hypothesis values for comparison moving statistics (MA, MSTD, MPE)
+"""
+# Moving statistics don't need to separate training and validation. So just combine both to get null cutoffs
+moving_stats_ref_x = np.concatenate((training_data, validation_data))
 
-bandwidth = int(100/SUBSAMPLE)
-S_quantile = 0.90
-alpha = (1-S_quantile)/2
+moving_stats_null_data = (moving_stats_ref_x - mu)/sigma # Normalise data
+moving_stats_test_series_null = moving_stats_null_data[::SUBSAMPLE]
 
-S_q_null = np.zeros(len(S_null))
-S_mean_null = np.zeros(len(S_null))
-S_std_null = np.zeros(len(S_null)) 
+## Calculate above statistics for comparison MA, MSTD, MPE
+MA_null = []
+MSTD_null = []
+dx = 4 # Dimension for calculating ordinal permutation entropy
+MPE_null = []
 
-for i in tqdm(range(bandwidth,np.shape(test_series_null)[0])):
-    S_q_null[i] = np.quantile(S_null[(i-bandwidth):i], S_quantile)
-    S_mean_null[i] = np.mean(S_null[(i-bandwidth):i])
-    S_std_null[i] = np.std(S_null[(i-bandwidth):i])
-
-S_q_null_lower = np.quantile(S_q_null, alpha)
-S_q_null_upper = np.quantile(S_q_null, 1-alpha)
-S_q_null = np.median(S_q_null)
-
-S_mean_null_lower = np.quantile(S_mean_null, alpha)
-S_mean_null_upper = np.quantile(S_mean_null, 1-alpha)
-S_mean_null = np.mean(S_mean_null)
-
-
-S_std_null_lower = np.quantile(S_std_null, alpha)
-S_std_null_upper = np.quantile(S_std_null, 1-alpha)
-S_std_null = np.mean(S_std_null)
+for i in tqdm(range(bandwidth,np.shape(moving_stats_test_series_null)[0])):
+    window = moving_stats_test_series_null[(i-bandwidth):i]
+    MA_null.append(np.mean(window))
+    MSTD_null.append(np.std(window))
+    MPE_null.append(OP.complexity_entropy(window, dx = dx, taux = round(lags[-1]/dx))[0])
 
 # %%
 """
@@ -273,19 +280,18 @@ S_time = np.array(range(0,np.shape(test_series)[0]))
 """
 Calculate comparison moving statistics on test data.
 """
-# dx = 4
-# moving_average  = np.zeros(np.shape(test_series)[0])
-# moving_std = np.zeros(np.shape(test_series)[0])
-# moving_PE  = np.zeros(np.shape(test_series)[0])
+moving_average  = np.zeros(np.shape(test_series)[0])
+moving_std = np.zeros(np.shape(test_series)[0])
+moving_PE  = np.zeros(np.shape(test_series)[0])
 moving_S = np.zeros(np.shape(S)[0])
 
 for i in tqdm(range(bandwidth,np.shape(test_series)[0])):
     window = test_series[(i-bandwidth):i,0,0]
     S_window = S[(i-bandwidth):i]
-    # moving_average[i] = np.mean(window)
-    # moving_std[i] = np.std(window)
+    moving_average[i] = np.mean(window)
+    moving_std[i] = np.std(window)
     moving_S[i] = np.mean(S_window)
-    # moving_PE[i] = OP.complexity_entropy(window, dx = dx, taux = round(lags[0]/SUBSAMPLE))[0]
+    moving_PE[i] = OP.complexity_entropy(window, dx = dx, taux = round(lags[-1]/dx))[0]
 
 
 # %% Helper Function for converting calculate metric/statistic into a normalised binary statistic
@@ -334,17 +340,56 @@ def exp_binary_surprise(S, S_cutoff, bandwidth = 250):
     
     return exp_smooth, S_smooth
 
+def exp_binary_twoway(S, S_cutoff_lower, S_cutoff_upper, bandwidth = 250):
+    exp_alpha = 1/bandwidth
+    S_binary = np.maximum(((np.array(S)<S_cutoff_lower).astype(int)),((np.array(S)>S_cutoff_upper).astype(int)))
+    exp_smooth = np.zeros(len(S_binary))
+    S_smooth = np.zeros(len(S_binary))
+
+    # Apply exponential smoothing
+    for j in range(len(exp_smooth)):
+        if j == 0:
+            exp_smooth[j] = S_binary[j]
+            S_smooth[j] = S[j]
+        else:
+            exp_smooth[j] = (1-exp_alpha)*exp_smooth[j-1] + exp_alpha*S_binary[j]
+            S_smooth[j] = (1-exp_alpha)*S_smooth[j-1] + exp_alpha*S[j]
+    
+    return exp_smooth, S_smooth
+
 # %%
 """
-Calculate E(t) for various statistical measures
+Calculate E(t) for various statistical measures (S, MA, MSTD, MPE). 
 """
 
 # Attractor Network Surprise Metric
-S_cutoff = np.quantile(S_null, 0.95)
+S_cutoff = np.quantile(S_null, 1-quantile_alpha)
 exp_smooth, S_smooth = exp_binary_surprise(S, S_cutoff, bandwidth = bandwidth)
 exp_smooth_null = exp_binary_surprise(S_null, S_cutoff, bandwidth = bandwidth)[0]
-exp_cutoff = 2*np.quantile(exp_smooth_null, 0.95)
+exp_cutoff = cutoff_ratio*np.quantile(exp_smooth_null, 1-quantile_alpha)
 S_binary = (exp_smooth>exp_cutoff).astype(int)
+
+# Moving Statistics Comparisons
+MA_cutoff_lower = np.quantile(MA_null, quantile_alpha/2)
+MA_cutoff_upper = np.quantile(MA_null, 1-quantile_alpha/2)
+MA_exp_smooth, MA_smooth = exp_binary_twoway(moving_average[bandwidth+1:], MA_cutoff_lower, MA_cutoff_upper, bandwidth = bandwidth)
+MA_exp_smooth_null = exp_binary_twoway(MA_null, MA_cutoff_lower, MA_cutoff_upper, bandwidth = bandwidth)[0]
+MA_exp_cutoff = cutoff_ratio*np.quantile(MA_exp_smooth_null, 1-quantile_alpha)
+MA_binary = (MA_exp_smooth>MA_exp_cutoff).astype(int)
+
+MSTD_cutoff_lower = np.quantile(MSTD_null, quantile_alpha/2)
+MSTD_cutoff_upper = np.quantile(MSTD_null, 1-quantile_alpha/2)
+MSTD_exp_smooth, MSTD_smooth = exp_binary_twoway(moving_std[bandwidth+1:], MSTD_cutoff_lower, MSTD_cutoff_upper, bandwidth = bandwidth)
+MSTD_exp_smooth_null = exp_binary_twoway(MSTD_null, MSTD_cutoff_lower, MSTD_cutoff_upper, bandwidth = bandwidth)[0]
+MSTD_exp_cutoff = cutoff_ratio*np.quantile(MSTD_exp_smooth_null, 1-quantile_alpha)
+MSTD_binary = (MSTD_exp_smooth>MSTD_exp_cutoff).astype(int)
+
+MPE_cutoff_lower = np.quantile(MPE_null, quantile_alpha/2)
+MPE_cutoff_upper = np.quantile(MPE_null, 1-quantile_alpha/2)
+MPE_exp_smooth, MSTD_smooth = exp_binary_twoway(moving_PE[bandwidth+1:], MPE_cutoff_lower, MPE_cutoff_upper, bandwidth = bandwidth)
+MPE_exp_smooth_null = exp_binary_twoway(MPE_null, MPE_cutoff_lower, MPE_cutoff_upper, bandwidth = bandwidth)[0]
+MPE_exp_cutoff = cutoff_ratio*np.quantile(MPE_exp_smooth_null, 1-quantile_alpha)
+MPE_binary = (MPE_exp_smooth>MPE_exp_cutoff).astype(int)
 
 # %% Plot results
 
@@ -352,24 +397,48 @@ plot_start = bandwidth
 plot_end = len(S_time)-1 #Subsampled
 
 plt.style.use('default')
-fig, ax = plt.subplots(2, 1,figsize = (10,8), sharex = 'all')
+fig, ax = plt.subplots(5, 1,figsize = (10,8), sharex = 'all')
 fig.suptitle(f"Test Detection, Window = {bandwidth}", fontsize = 20)
-ax0,ax1 = ax
+ax0,ax1,ax2,ax3,ax4 = ax
 
 lw = 1
 lab_font_size = 18
 
-ax0.plot(S_time[plot_start:plot_end]*dt, test_series[plot_start:plot_end,0,0], linewidth = lw)
+ax0.plot(S_time[plot_start:plot_end], test_series[plot_start:plot_end,0,0], linewidth = lw)
 ax0.set_ylabel("x(t)", fontsize = lab_font_size)
 
-ax1.plot(S_time[plot_start:plot_end]*dt, S[plot_start:plot_end], linewidth = lw, alpha = 0.7)
-ax1.set_ylabel("Surprise", fontsize = lab_font_size)
+ax1.plot(S_time[plot_start:plot_end], moving_average[plot_start:plot_end], linewidth = lw, alpha = 0.7)
+ax1.set_ylabel("MA", fontsize = lab_font_size)
 ax1r = ax1.twinx()
-ax1r.set_ylabel("E(t)", fontsize = lab_font_size)
-ax1r.plot(S_time[plot_start:plot_end]*dt, exp_smooth[plot_start:plot_end], linewidth = lw, color = 'black')
-ax1r.hlines(exp_cutoff, S_time[plot_start]*dt, S_time[plot_end]*dt, color = "black", linestyle = '--')
-ax1r.plot(S_time[plot_start:plot_end]*dt, S_binary[plot_start:plot_end], linewidth = 1.5, color = 'red', zorder = 0)
-ax1r.legend(["E(t)","Cutoff", "Detection"], loc = 'upper right')
+ax1r.set_ylabel("E_MA(t)", fontsize = lab_font_size)
+ax1r.plot(S_time[plot_start:plot_end], MA_exp_smooth, linewidth = lw, color = 'black')
+ax1r.hlines(MA_exp_cutoff, S_time[plot_start], S_time[plot_end], color = "black", linestyle = '--')
+ax1r.plot(S_time[plot_start:plot_end], MA_binary, linewidth = 1.5, color = 'red', zorder = 0)
+
+ax2.plot(S_time[plot_start:plot_end], moving_std[plot_start:plot_end], linewidth = lw, alpha = 0.7)
+ax2.set_ylabel("MSTD", fontsize = lab_font_size)
+ax2r = ax2.twinx()
+ax2r.set_ylabel("E_MSTD(t)", fontsize = lab_font_size)
+ax2r.plot(S_time[plot_start:plot_end], MSTD_exp_smooth, linewidth = lw, color = 'black')
+ax2r.hlines(MSTD_exp_cutoff, S_time[plot_start], S_time[plot_end], color = "black", linestyle = '--')
+ax2r.plot(S_time[plot_start:plot_end], MSTD_binary, linewidth = 1.5, color = 'red', zorder = 0)
+
+ax3.plot(S_time[plot_start:plot_end], moving_PE[plot_start:plot_end], linewidth = lw, alpha = 0.7)
+ax3.set_ylabel("MPE", fontsize = lab_font_size)
+ax3r = ax3.twinx()
+ax3r.set_ylabel("E_MPE(t)", fontsize = lab_font_size)
+ax3r.plot(S_time[plot_start:plot_end], MPE_exp_smooth, linewidth = lw, color = 'black')
+ax3r.hlines(MPE_exp_cutoff, S_time[plot_start], S_time[plot_end], color = "black", linestyle = '--')
+ax3r.plot(S_time[plot_start:plot_end], MPE_binary, linewidth = 1.5, color = 'red', zorder = 0)
+
+ax4.plot(S_time[plot_start:plot_end], S[plot_start:plot_end], linewidth = lw, alpha = 0.7)
+ax4.set_ylabel("Surprise", fontsize = lab_font_size)
+ax4r = ax4.twinx()
+ax4r.set_ylabel("E(t)", fontsize = lab_font_size)
+ax4r.plot(S_time[plot_start:plot_end], exp_smooth[plot_start:plot_end], linewidth = lw, color = 'black')
+ax4r.hlines(exp_cutoff, S_time[plot_start], S_time[plot_end], color = "black", linestyle = '--')
+ax4r.plot(S_time[plot_start:plot_end], S_binary[plot_start:plot_end], linewidth = 1.5, color = 'red', zorder = 0)
+ax4r.legend(["E(t)","Cutoff", "Detection"], loc = 'upper right')
 
 ax0.set_ylim(ax0.get_ylim()[0], ax0.get_ylim()[1])
 ax1.set_ylim(ax1.get_ylim()[0], ax1.get_ylim()[1])
